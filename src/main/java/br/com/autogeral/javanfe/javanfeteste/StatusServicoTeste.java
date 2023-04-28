@@ -35,7 +35,7 @@ public class StatusServicoTeste {
             ConfiguracoesNfe config = ConfiguracoesNfe.criarConfiguracoes(EstadosEnum.SP, AmbienteEnum.HOMOLOGACAO, certificado, "");
 
             //Efetua Consulta
-            TRetConsStatServ retorno = Nfe.statusServico(config, DocumentoEnum.NFE);
+            TRetConsStatServ retorno = Nfe.statusServico(config, DocumentoEnum.NFCE);
 
             //Resultado
             System.out.println();

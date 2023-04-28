@@ -25,7 +25,9 @@ import br.com.swconsultoria.nfe.schema_4.enviNFe.TNFe.InfNFe.Total.ICMSTot;
 import br.com.swconsultoria.nfe.schema_4.retConsReciNFe.TRetConsReciNFe;
 import br.com.swconsultoria.nfe.util.*;
 import java.io.File;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 
 import javax.xml.bind.JAXBElement;
 import javax.xml.namespace.QName;
@@ -71,7 +73,7 @@ public class EnvioNfceTeste {
             //Informe o idToken
             String idToken = "XXX";
             //Informe o CSC da NFCe
-            String csc = "XXX";
+            String csc = "";
 
             // MontaChave a NFCe
             ChaveUtil chaveUtil = new ChaveUtil(config.getEstado(), cnpj, modelo, serie, numeroNFCe, tipoEmissao, cnf, dataEmissao);
@@ -114,7 +116,7 @@ public class EnvioNfceTeste {
             enviNFe.getNFe().add(nfe);
 
             // Monta e Assina o XML
-            enviNFe = Nfe.montaNfe(config, enviNFe, true);
+            enviNFe = Nfe.montaNfe(config, enviNFe, false);
 
             //Monta QRCode
             String qrCode = preencheQRCode(enviNFe,config,idToken,csc);
@@ -129,6 +131,7 @@ public class EnvioNfceTeste {
 
             //Valida se o Retorno é Assincrono
             if (RetornoUtil.isRetornoAssincrono(retorno)) {
+                System.out.println("Retorno ASSINCRONO");
                 //Pega o Recibo
                 String recibo = retorno.getInfRec().getNRec();
                 int tentativa = 0;
@@ -136,7 +139,7 @@ public class EnvioNfceTeste {
 
                 //Define Numero de tentativas que irá tentar a Consulta
                 while (tentativa < 15) {
-                    retornoNfe = Nfe.consultaRecibo(config, recibo, DocumentoEnum.NFE);
+                    retornoNfe = Nfe.consultaRecibo(config, recibo, DocumentoEnum.NFCE);
                     if (retornoNfe.getCStat().equals(StatusEnum.LOTE_EM_PROCESSAMENTO.getCodigo())) {
                         System.out.println("INFO: Lote Em Processamento, vai tentar novamente apos 1 Segundo.");
                         Thread.sleep(1000);
@@ -148,19 +151,27 @@ public class EnvioNfceTeste {
 
                 RetornoUtil.validaAssincrono(retornoNfe);
                 System.out.println();
+                String xml = XmlNfeUtil.criaNfeProc(enviNFe, retornoNfe.getProtNFe().get(0));
                 System.out.println("# Status: " + retornoNfe.getProtNFe().get(0).getInfProt().getCStat() + " - " + retornoNfe.getProtNFe().get(0).getInfProt().getXMotivo());
                 System.out.println("# Protocolo: " + retornoNfe.getProtNFe().get(0).getInfProt().getNProt());
-                System.out.println("# XML Final: " + XmlNfeUtil.criaNfeProc(enviNFe, retornoNfe.getProtNFe().get(0)));
-
+                System.out.println("# XML Final: " + xml);
+                
+                File xmlFile = new File(chave + ".xml");
+                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW);
             } else {
                 //Se for else o Retorno é Sincrono
 
                 //Valida Retorno Sincrono
                 RetornoUtil.validaSincrono(retorno);
+                System.out.println("Retorno síncrono");
                 System.out.println();
+                String xml = XmlNfeUtil.criaNfeProc(enviNFe, retorno.getProtNFe());
                 System.out.println("# Status: " + retorno.getProtNFe().getInfProt().getCStat() + " - " + retorno.getProtNFe().getInfProt().getXMotivo());
                 System.out.println("# Protocolo: " + retorno.getProtNFe().getInfProt().getNProt());
-                System.out.println("# Xml Final :" + XmlNfeUtil.criaNfeProc(enviNFe, retorno.getProtNFe()));
+                System.out.println("# Xml Final :" + xml);
+                
+                File xmlFile = new File(chave + ".xml");
+                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW);
             }
 
         } catch (Exception e) {
