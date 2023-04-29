@@ -25,6 +25,7 @@ import br.com.swconsultoria.nfe.schema_4.enviNFe.TNFe.InfNFe.Total.ICMSTot;
 import br.com.swconsultoria.nfe.schema_4.retConsReciNFe.TRetConsReciNFe;
 import br.com.swconsultoria.nfe.util.*;
 import java.io.File;
+import java.io.FileInputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -35,6 +36,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * @author Samuel Oliveira
@@ -43,12 +45,46 @@ import java.util.List;
 public class EnvioNfceTeste {
 
     public static void main(String[] args) {
+        String configPropertiesPath = System.getProperty("config");
+        if(configPropertiesPath==null) {
+            System.out.println("Defina o caminho para o arquivo de configurações, para executar por linha de comando faça:\n"
+                    + "java -jar -Dconfig=C:\\Users\\fulano\\nfce\\nfce.properties JavaNfeTeste.jar\n");
+            System.out.flush();
+            return;
+        }
+        
+        File f = new File(configPropertiesPath);
+        if(!f.exists()) {
+            System.out.println("Arquivo de configuração não encontrado " + f.getAbsolutePath());
+            System.out.flush();
+            return;
+        }
 
         try {
+            Properties p = new Properties();
+            try(FileInputStream fis = new FileInputStream(f)) {
+                p.load(fis);
+            }
+            
+            String configs[] = new String[]{"certificado.caminho", "certificado.senha", "csc", "idToken"};
+            boolean configsOk = true;
+            for (String config : configs) {
+                String prop = p.getProperty(config);
+                if (null == prop || "".equals(prop)) {
+                    configsOk = false;
+                    System.out.println("Configuração " + config + " nao definida");
+                } else {
+                    System.out.println("Configuração : " + config + ", valor : " + prop);
+                }
+            }
+
+            if (!configsOk) {
+                return;
+            }
             // Inicia As Configurações (1)
-            File file = new File("C:\\DBF\\dist\\ARQUIVO.pfx");
+            File file = new File(p.getProperty("certificado.caminho"));
             byte[] bytes = Files.readAllBytes(file.toPath());
-            String senha = "";
+            String senha = p.getProperty("certificado.senha");
 
             Certificado certificado = CertificadoService.certificadoPfxBytes(bytes, senha);
 
@@ -71,9 +107,9 @@ public class EnvioNfceTeste {
             //Informe o tipo de Emissao da NFCe
             String tipoEmissao = "1";
             //Informe o idToken
-            String idToken = "XXX";
+            String idToken = p.getProperty("idToken");
             //Informe o CSC da NFCe
-            String csc = "";
+            String csc = p.getProperty("csc").replace("-", "");
 
             // MontaChave a NFCe
             ChaveUtil chaveUtil = new ChaveUtil(config.getEstado(), cnpj, modelo, serie, numeroNFCe, tipoEmissao, cnf, dataEmissao);
@@ -227,13 +263,13 @@ public class EnvioNfceTeste {
     private static Emit preencheEmitente(ConfiguracoesNfe config, String cnpj) {
         Emit emit = new Emit();
         emit.setCNPJ(cnpj);
-        emit.setXNome("XXX");
+        emit.setXNome("AUTO GERAL AUTOPECAS LTDA");
 
         TEnderEmi enderEmit = new TEnderEmi();
-        enderEmit.setXLgr("AV SANTO ANTONIO e cia");
-        enderEmit.setNro("0");
-        enderEmit.setXCpl("QD 17 LT 01-02-03");
-        enderEmit.setXBairro("PQ STO ANTONIO");
+        enderEmit.setXLgr("AV OCTAVIANO PEREIRA MENDES");
+        enderEmit.setNro("1333");
+        enderEmit.setXCpl("");
+        enderEmit.setXBairro("CENTRO");
         enderEmit.setCMun("5219753");
         enderEmit.setXMun("SANTO ANTONIO DO DESCOBERTO");
         enderEmit.setUF(TUfEmi.valueOf(config.getEstado().toString()));
