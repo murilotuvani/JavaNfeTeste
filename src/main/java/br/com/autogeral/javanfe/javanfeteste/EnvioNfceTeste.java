@@ -7,6 +7,7 @@ package br.com.autogeral.javanfe.javanfeteste;
 
 import br.com.swconsultoria.certificado.Certificado;
 import br.com.swconsultoria.certificado.CertificadoService;
+import br.com.swconsultoria.certificado.exception.CertificadoException;
 import br.com.swconsultoria.nfe.Nfe;
 import br.com.swconsultoria.nfe.dom.ConfiguracoesNfe;
 import br.com.swconsultoria.nfe.dom.enuns.*;
@@ -26,6 +27,7 @@ import br.com.swconsultoria.nfe.schema_4.retConsReciNFe.TRetConsReciNFe;
 import br.com.swconsultoria.nfe.util.*;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -37,6 +39,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import javax.xml.bind.JAXBException;
 
 /**
  * @author Samuel Oliveira
@@ -66,7 +69,7 @@ public class EnvioNfceTeste {
                 p.load(fis);
             }
             
-            String configs[] = new String[]{"certificado.caminho", "certificado.senha", "csc", "idToken"};
+            String configs[] = new String[]{"certificado.caminho", "certificado.senha", "csc", "idToken", "nfe.schema.nfce"};
             boolean configsOk = true;
             for (String config : configs) {
                 String prop = p.getProperty(config);
@@ -87,15 +90,17 @@ public class EnvioNfceTeste {
             String senha = p.getProperty("certificado.senha");
 
             Certificado certificado = CertificadoService.certificadoPfxBytes(bytes, senha);
+            String nfceSchema = p.getProperty("nfe.schema.nfce");
 
-            ConfiguracoesNfe config = ConfiguracoesNfe.criarConfiguracoes(EstadosEnum.SP, AmbienteEnum.HOMOLOGACAO, certificado, "");
+            ConfiguracoesNfe config = ConfiguracoesNfe.criarConfiguracoes(EstadosEnum.SP, AmbienteEnum.HOMOLOGACAO, certificado, nfceSchema);
 
             config.setEncode("UTF-8");
 
             //Informe o Numero da NFCe
-            int numeroNFCe = 1;
+            int numeroNFCe = 3;
             //Informe o CNPJ do Emitente da NFCe
-            String cnpj = "05437537000137";
+            String cnpj = p.getProperty("cnpj");
+            String ie = p.getProperty("ie");
             //Informe a data de Emissao da NFCe
             LocalDateTime dataEmissao = LocalDateTime.now();
             //Informe o cnf da NFCe com 8 digitos
@@ -109,7 +114,7 @@ public class EnvioNfceTeste {
             //Informe o idToken
             String idToken = p.getProperty("idToken");
             //Informe o CSC da NFCe
-            String csc = p.getProperty("csc").replace("-", "");
+            String csc = p.getProperty("csc");
 
             // MontaChave a NFCe
             ChaveUtil chaveUtil = new ChaveUtil(config.getEstado(), cnpj, modelo, serie, numeroNFCe, tipoEmissao, cnf, dataEmissao);
@@ -124,7 +129,7 @@ public class EnvioNfceTeste {
             infNFe.setIde(preencheIde(config, cnf, numeroNFCe, tipoEmissao, modelo, serie, cdv, dataEmissao));
 
             //Preenche Emitente
-            infNFe.setEmit(preencheEmitente(config, cnpj));
+            infNFe.setEmit(preencheEmitente(config, cnpj, ie));
 
             //Preenche o Destinatario
             infNFe.setDest(preencheDestinatario());
@@ -151,9 +156,6 @@ public class EnvioNfceTeste {
             enviNFe.setIndSinc("1");
             enviNFe.getNFe().add(nfe);
 
-            // Monta e Assina o XML
-            enviNFe = Nfe.montaNfe(config, enviNFe, false);
-
             //Monta QRCode
             String qrCode = preencheQRCode(enviNFe,config,idToken,csc);
 
@@ -161,6 +163,14 @@ public class EnvioNfceTeste {
             infNFeSupl.setQrCode(qrCode);
             infNFeSupl.setUrlChave(WebServiceUtil.getUrl(config, DocumentoEnum.NFCE, ServicosEnum.URL_CONSULTANFCE));
             enviNFe.getNFe().get(0).setInfNFeSupl(infNFeSupl);
+
+            // Monta e Assina o XML
+            enviNFe = Nfe.montaNfe(config, enviNFe, true);
+
+            String xml = XmlNfeUtil.objectToXml(enviNFe, Charset.forName("UTF-8"));
+            File xmlFile = new File(chave + ".xml");
+            Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8"))
+                    , StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
 
             // Envia a Nfe para a Sefaz
             TRetEnviNFe retorno = Nfe.enviarNfe(config, enviNFe, DocumentoEnum.NFCE);
@@ -187,32 +197,33 @@ public class EnvioNfceTeste {
 
                 RetornoUtil.validaAssincrono(retornoNfe);
                 System.out.println();
-                String xml = XmlNfeUtil.criaNfeProc(enviNFe, retornoNfe.getProtNFe().get(0));
+                xml = XmlNfeUtil.criaNfeProc(enviNFe, retornoNfe.getProtNFe().get(0));
+                xmlFile = new File(chave + "-retorno.xml");
+                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8"))
+                        , StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+                
                 System.out.println("# Status: " + retornoNfe.getProtNFe().get(0).getInfProt().getCStat() + " - " + retornoNfe.getProtNFe().get(0).getInfProt().getXMotivo());
                 System.out.println("# Protocolo: " + retornoNfe.getProtNFe().get(0).getInfProt().getNProt());
                 System.out.println("# XML Final: " + xml);
-                
-                File xmlFile = new File(chave + ".xml");
-                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW);
             } else {
                 //Se for else o Retorno é Sincrono
-
                 //Valida Retorno Sincrono
                 RetornoUtil.validaSincrono(retorno);
                 System.out.println("Retorno síncrono");
                 System.out.println();
-                String xml = XmlNfeUtil.criaNfeProc(enviNFe, retorno.getProtNFe());
+                xml = XmlNfeUtil.criaNfeProc(enviNFe, retorno.getProtNFe());
+                xmlFile = new File(chave + "-retorno.xml");
+                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8"))
+                        , StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
                 System.out.println("# Status: " + retorno.getProtNFe().getInfProt().getCStat() + " - " + retorno.getProtNFe().getInfProt().getXMotivo());
                 System.out.println("# Protocolo: " + retorno.getProtNFe().getInfProt().getNProt());
                 System.out.println("# Xml Final :" + xml);
-                
-                File xmlFile = new File(chave + ".xml");
-                Files.write(xmlFile.toPath(), xml.getBytes(Charset.forName("UTF-8")), StandardOpenOption.CREATE_NEW);
             }
 
-        } catch (Exception e) {
-            System.err.println();
+        } catch (CertificadoException | NfeException | IOException | InterruptedException | NoSuchAlgorithmException | JAXBException e) {
             System.err.println("# Erro: " + e.getMessage());
+            e.printStackTrace(System.err);
+            
         }
 
     }
@@ -260,7 +271,7 @@ public class EnvioNfceTeste {
      * @param cnpj
      * @return
      */
-    private static Emit preencheEmitente(ConfiguracoesNfe config, String cnpj) {
+    private static Emit preencheEmitente(ConfiguracoesNfe config, String cnpj, String ie) {
         Emit emit = new Emit();
         emit.setCNPJ(cnpj);
         emit.setXNome("AUTO GERAL AUTOPECAS LTDA");
@@ -268,18 +279,18 @@ public class EnvioNfceTeste {
         TEnderEmi enderEmit = new TEnderEmi();
         enderEmit.setXLgr("AV OCTAVIANO PEREIRA MENDES");
         enderEmit.setNro("1333");
-        enderEmit.setXCpl("");
+        //enderEmit.setXCpl("");
         enderEmit.setXBairro("CENTRO");
-        enderEmit.setCMun("5219753");
-        enderEmit.setXMun("SANTO ANTONIO DO DESCOBERTO");
+        enderEmit.setCMun("3523909");
+        enderEmit.setXMun("ITU");
         enderEmit.setUF(TUfEmi.valueOf(config.getEstado().toString()));
-        enderEmit.setCEP("72900000");
+        enderEmit.setCEP("13301909");
         enderEmit.setCPais("1058");
         enderEmit.setXPais("Brasil");
-        enderEmit.setFone("6233215175");
+        enderEmit.setFone("1140137777");
         emit.setEnderEmit(enderEmit);
 
-        emit.setIE("XXX");
+        emit.setIE(ie);
         emit.setCRT("3");
 
         return emit;
@@ -291,15 +302,15 @@ public class EnvioNfceTeste {
      */
     private static Dest preencheDestinatario() {
         Dest dest = new Dest();
-        dest.setCNPJ("XXX");
+        dest.setCNPJ("05437537000218");
         dest.setXNome("NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL");
 
         TEndereco enderDest = new TEndereco();
         enderDest.setXLgr("Rua: Teste");
         enderDest.setNro("0");
         enderDest.setXBairro("TESTE");
-        enderDest.setCMun("3523909");
-        enderDest.setXMun("ITU");
+        enderDest.setCMun("3545209");
+        enderDest.setXMun("SALTO");
         enderDest.setUF(TUf.valueOf("SP"));
         enderDest.setCEP("13301000");
         enderDest.setCPais("1058");
