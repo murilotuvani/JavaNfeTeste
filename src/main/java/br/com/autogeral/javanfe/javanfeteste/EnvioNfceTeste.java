@@ -97,7 +97,7 @@ public class EnvioNfceTeste {
             config.setEncode("UTF-8");
 
             //Informe o Numero da NFCe
-            int numeroNFCe = 3;
+            int numeroNFCe = 5;
             //Informe o CNPJ do Emitente da NFCe
             String cnpj = p.getProperty("cnpj");
             String ie = p.getProperty("ie");
@@ -132,7 +132,9 @@ public class EnvioNfceTeste {
             infNFe.setEmit(preencheEmitente(config, cnpj, ie));
 
             //Preenche o Destinatario
-            infNFe.setDest(preencheDestinatario());
+            if (!Boolean.parseBoolean(System.getProperty("nfe.consumidor", "false"))) {
+                infNFe.setDest(preencheDestinatario());
+            }
 
             //Preenche os dados do Produto da NFCe e adiciona a Lista
             infNFe.getDet().addAll(preencheDet());
@@ -321,7 +323,7 @@ public class EnvioNfceTeste {
         dest.setIndIEDest("9");
         return dest;
     }
-
+    
     /**
      * Preenche Det NFCe
      */
